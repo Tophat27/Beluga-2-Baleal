@@ -5,7 +5,7 @@
 #include <WiFiManager.h>
 
 // URL do Google Apps Script (você vai criar isso)
-const char* googleScriptURL = "https://script.google.com/macros/s/AKfycbzEyJNkQL3nqI3uXv-M2hCOBinF4iIVG2vJKTQxJ9KpwNFuKnitNvxQC342DAL4XjOU/exec";
+const char* googleScriptURL = "https://script.google.com/macros/s/AKfycbzc6knUx4TFk4lhWnU4FTaD5gcPCkPJtddr5idpyJ97XYkuXMd-1DwE2XseQMhxXX-i/exec";
 
 
 // Estrutura para receber dados (deve ser idêntica à transmissora)
@@ -17,6 +17,14 @@ typedef struct {
   int targets_dop[10];
   int targets_cluster[10];
   float targets_speed[10];
+  // Dados de sinais vitais (quando pessoa está próxima)
+  bool vital_signs_available;
+  float total_phase;
+  float breath_phase;
+  float heart_phase;
+  float breath_rate;
+  float heart_rate;
+  float distance;
 } radar_data_t;
 
 radar_data_t receivedData;
@@ -36,6 +44,16 @@ void OnDataRecv(const esp_now_recv_info *info, const uint8_t *data, int len) {
                   info->src_addr[3], info->src_addr[4], info->src_addr[5]);
     Serial.printf("Humano detectado: %s\n", receivedData.human_detected ? "SIM" : "NÃO");
     Serial.printf("Número de alvos: %d\n", receivedData.num_targets);
+    
+    // Exibir sinais vitais se disponíveis
+    if (receivedData.vital_signs_available) {
+      Serial.println("\n--- SINAIS VITAIS ---");
+      Serial.printf("Distância: %.2f cm\n", receivedData.distance);
+      Serial.printf("Taxa de Respiração: %.2f bpm\n", receivedData.breath_rate);
+      Serial.printf("Taxa Cardíaca: %.2f bpm\n", receivedData.heart_rate);
+      Serial.printf("Fases - Total: %.2f | Respiração: %.2f | Coração: %.2f\n", 
+                   receivedData.total_phase, receivedData.breath_phase, receivedData.heart_phase);
+    }
     
     if (receivedData.num_targets > 0) {
       Serial.println("\n--- DETALHES DOS ALVOS ---");
@@ -99,6 +117,19 @@ void sendToGoogleSheets() {
   doc["timestamp"] = millis();
   doc["human_detected"] = receivedData.human_detected;
   doc["num_targets"] = receivedData.num_targets;
+  
+  // Adicionar dados de sinais vitais se disponíveis
+  if (receivedData.vital_signs_available) {
+    doc["vital_signs_available"] = true;
+    doc["distance"] = receivedData.distance;
+    doc["breath_rate"] = receivedData.breath_rate;
+    doc["heart_rate"] = receivedData.heart_rate;
+    doc["total_phase"] = receivedData.total_phase;
+    doc["breath_phase"] = receivedData.breath_phase;
+    doc["heart_phase"] = receivedData.heart_phase;
+  } else {
+    doc["vital_signs_available"] = false;
+  }
   
   JsonArray targets = doc.createNestedArray("targets");
   for (int i = 0; i < receivedData.num_targets; i++) {

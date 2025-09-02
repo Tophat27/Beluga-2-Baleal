@@ -1,11 +1,12 @@
-# 🚀 Sistema de Radar com ESP-NOW e Google Sheets
+# 🚀 Sistema de Radar com ESP-NOW, Sinais Vitais e Google Sheets
 
-Sistema inteligente de detecção de movimento usando radar mmWave MR60BHA2, comunicação ESP-NOW entre ESPs e armazenamento automático em Google Sheets.
+Sistema inteligente de detecção de movimento e monitoramento de sinais vitais usando radar mmWave MR60BHA2, comunicação ESP-NOW entre ESPs e armazenamento automático em Google Sheets.
 
 ## 📋 Descrição do Projeto
 
-Este projeto implementa um sistema de monitoramento de movimento em tempo real que:
+Este projeto implementa um sistema de monitoramento de movimento e sinais vitais em tempo real que:
 - **Detecta presença humana** usando radar mmWave de alta precisão
+- **Mede sinais vitais** (batimento cardíaco, respiração) quando pessoa está próxima (≤ 1.5m)
 - **Transmite dados** via ESP-NOW para economia de bateria
 - **Armazena informações** automaticamente no Google Sheets
 - **Funciona com deep sleep** para máxima eficiência energética
@@ -20,6 +21,7 @@ Este projeto implementa um sistema de monitoramento de movimento em tempo real q
 │ • Radar MR60BHA2│               │ • ESP-NOW       │            │ • Armazenamento │
 │ • ESP-NOW       │               │ • WiFi          │            │ • Histórico     │
 │ • Deep Sleep    │               │ • HTTP Client   │            │ • Análise       │
+│ • Sinais Vitais │               │ • JSON Parser   │            │ • Sinais Vitais │
 └─────────────────┘               └─────────────────┘            └─────────────────┘
 ```
 
@@ -132,6 +134,14 @@ typedef struct {
   int targets_dop[10];          // Índice Doppler
   int targets_cluster[10];      // Índice Cluster
   float targets_speed[10];      // Velocidade dos alvos (cm/s)
+  // Dados de sinais vitais (quando pessoa está próxima)
+  bool vital_signs_available;   // Sinais vitais disponíveis
+  float total_phase;            // Fase total
+  float breath_phase;           // Fase de respiração
+  float heart_phase;            // Fase cardíaca
+  float breath_rate;            // Taxa de respiração (bpm)
+  float heart_rate;             // Taxa cardíaca (bpm)
+  float distance;               // Distância (cm)
 } radar_data_t;
 ```
 
@@ -140,6 +150,13 @@ typedef struct {
 - **Coluna B**: Humano detectado (true/false)
 - **Coluna C**: Número de alvos
 - **Coluna D**: Dados detalhados dos alvos (JSON)
+- **Coluna E**: Sinais vitais disponíveis (true/false)
+- **Coluna F**: Distância (cm)
+- **Coluna G**: Taxa de respiração (bpm)
+- **Coluna H**: Taxa cardíaca (bpm)
+- **Coluna I**: Fase total
+- **Coluna J**: Fase de respiração
+- **Coluna K**: Fase cardíaca
 
 ## 🚀 Como Usar
 
@@ -151,14 +168,16 @@ typedef struct {
 
 ### 2. Funcionamento Normal
 1. **ESP32-C6**: Detecta movimento e envia via ESP-NOW
-2. **ESP32 WROOM**: Recebe dados e envia para Google Sheets
-3. **Google Sheets**: Armazena dados em tempo real
-4. **Deep Sleep**: ESP32-C6 dorme quando não há movimento
+2. **ESP32-C6**: Se pessoa está ≤ 1.5m, mede sinais vitais automaticamente
+3. **ESP32 WROOM**: Recebe dados e envia para Google Sheets
+4. **Google Sheets**: Armazena dados em tempo real (movimento + sinais vitais)
+5. **Deep Sleep**: ESP32-C6 dorme quando não há movimento
 
 ### 3. Monitoramento
 - **Monitor Serial**: Logs em tempo real de ambas as ESPs
-- **Google Sheets**: Histórico completo de detecções
+- **Google Sheets**: Histórico completo de detecções e sinais vitais
 - **Deep Sleep**: Controle automático de energia
+- **Sinais Vitais**: Medição automática quando pessoa está próxima
 
 ## 📱 Portal WiFiManager
 
@@ -173,6 +192,42 @@ typedef struct {
 - WiFi é salvo na memória
 - Reconecta automaticamente ao reiniciar
 - Portal reabre se conexão falhar
+
+## 💓 Monitoramento de Sinais Vitais
+
+### Funcionalidades de Saúde
+O sistema agora inclui monitoramento automático de sinais vitais quando uma pessoa está próxima (≤ 1.5 metros):
+
+#### Medições Disponíveis
+- **Taxa Cardíaca**: Batimentos por minuto (BPM)
+- **Taxa de Respiração**: Respirações por minuto (BPM)
+- **Fases de Sinal**: Análise de fases de batimento e respiração
+- **Distância**: Medição precisa da distância da pessoa
+
+#### Ativação Automática
+- **Detecção de Proximidade**: Ativa quando pessoa está ≤ 1.5m
+- **Medição Contínua**: Coleta dados enquanto pessoa permanece próxima
+- **Economia de Energia**: Não mede quando pessoa está distante
+- **Transmissão Inteligente**: Envia dados de sinais vitais junto com detecção de movimento
+
+#### Aplicações Médicas
+- **Monitoramento de Saúde**: Acompanhamento contínuo de sinais vitais
+- **Detecção de Emergências**: Identificação de valores anômalos
+- **Histórico Médico**: Registro automático no Google Sheets
+- **Análise de Padrões**: Identificação de tendências de saúde
+
+### Configuração de Sinais Vitais
+```cpp
+// Distância máxima para ativação (em cm)
+#define VITAL_SIGNS_DISTANCE 150.0  // 1.5 metros
+
+// Função de medição automática
+void measureVitalSigns() {
+  // Mede fases, taxas e distância
+  // Armazena dados na estrutura radar_data_t
+  // Ativa flag vital_signs_available
+}
+```
 
 ## 🔋 Gerenciamento de Energia
 
@@ -209,17 +264,25 @@ typedef struct {
 - Confirmar se bibliotecas esp_sleep estão disponíveis
 - Verificar configurações de wake-up
 
+### Sinais vitais não são medidos
+- Verificar se pessoa está a ≤ 1.5 metros do radar
+- Confirmar se radar está detectando presença humana
+- Verificar se biblioteca mmWave suporta funções de sinais vitais
+- Testar com pessoa parada próxima ao radar
+
 ## 📈 Funcionalidades Avançadas
 
 ### Alertas Automáticos
 - Detecção de humanos
 - Monitoramento de velocidade dos alvos
+- Medição automática de sinais vitais
 - Logs detalhados de eventos
 
 ### Análise de Dados
 - Histórico completo no Google Sheets
 - Posicionamento X/Y dos alvos
 - Velocidade e direção do movimento
+- Sinais vitais (batimento cardíaco, respiração)
 - Timestamps precisos
 
 ### Configuração Remota
@@ -240,8 +303,17 @@ typedef struct {
 ```
 === XIAO ESP32-C6 Radar com Deep Sleep ===
 ESP-NOW configurado como transmissor
-Enviando dados para ESP: 43:34:3A:44:45:3A
+Sinais vitais: Ativados quando pessoa está a ≤ 1.5m
 --- Radar detectou dados ---
+-----Human Detected-----
+Distância detectada: 95.00 cm
+🚨 Pessoa próxima detectada! Medindo sinais vitais...
+🔍 Medindo sinais vitais...
+Fases - Total: 42.15 | Respiração: 11.20 | Coração: 75.80
+Taxa de Respiração: 18.00 bpm
+Taxa Cardíaca: 68.00 bpm
+Distância: 95.00 cm
+✅ Sinais vitais medidos com sucesso!
 ✅ Dados enviados via ESP-NOW
 ```
 
@@ -251,6 +323,23 @@ Enviando dados para ESP: 43:34:3A:44:45:3A
 WiFi conectado!
 ESP-NOW configurado como receptor
 === DADOS RECEBIDOS VIA ESP-NOW ===
+Humano detectado: SIM
+Número de alvos: 1
+
+--- SINAIS VITAIS ---
+Distância: 95.00 cm
+Taxa de Respiração: 18.00 bpm
+Taxa Cardíaca: 68.00 bpm
+Fases - Total: 42.15 | Respiração: 11.20 | Coração: 75.80
+
+--- DETALHES DOS ALVOS ---
+Alvo 1:
+  Posição X: -0.22 cm
+  Posição Y: 0.31 cm
+  Índice Doppler: 0
+  Índice Cluster: 0
+  Velocidade: 0.00 cm/s
+
 ✅ Dados enviados com sucesso para Google Sheets!
 ```
 
@@ -262,6 +351,8 @@ Este projeto está aberto para melhorias e sugestões. Principais áreas de dese
 - Integração com outros serviços
 - Otimizações de energia
 - Suporte a múltiplos radares
+- Análise avançada de sinais vitais
+- Alertas médicos automáticos
 
 ## 📄 Licença
 

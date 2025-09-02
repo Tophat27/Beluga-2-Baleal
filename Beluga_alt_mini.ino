@@ -33,6 +33,14 @@ typedef struct {
   int targets_dop[10];
   int targets_cluster[10];
   float targets_speed[10];
+  // Dados de sinais vitais (quando pessoa está próxima)
+  bool vital_signs_available;
+  float total_phase;
+  float breath_phase;
+  float heart_phase;
+  float breath_rate;
+  float heart_rate;
+  float distance;
 } radar_data_t;
 
 radar_data_t radarData;
@@ -45,6 +53,63 @@ unsigned long bootTime = 0;
 
 // Endereço MAC da ESP32 WROOM receptora
 uint8_t targetAddress[] = {0x43, 0x34, 0x3A, 0x44, 0x45, 0x3A};
+
+// Função para medir sinais vitais quando pessoa está próxima
+void measureVitalSigns() {
+  Serial.println("🔍 Medindo sinais vitais...");
+  
+  // Inicializar dados de sinais vitais
+  radarData.vital_signs_available = false;
+  radarData.total_phase = 0.0;
+  radarData.breath_phase = 0.0;
+  radarData.heart_phase = 0.0;
+  radarData.breath_rate = 0.0;
+  radarData.heart_rate = 0.0;
+  radarData.distance = 0.0;
+  
+  // 1. Medir fases de batimento e respiração
+  float total_phase, breath_phase, heart_phase;
+  if (mmWave.getHeartBreathPhases(total_phase, breath_phase, heart_phase)) {
+    radarData.total_phase = total_phase;
+    radarData.breath_phase = breath_phase;
+    radarData.heart_phase = heart_phase;
+    Serial.printf("Fases - Total: %.2f | Respiração: %.2f | Coração: %.2f\n", 
+                 total_phase, breath_phase, heart_phase);
+  } else {
+    Serial.println("❌ Erro ao obter fases");
+  }
+
+  // 2. Medir taxa de respiração
+  float breath_rate;
+  if (mmWave.getBreathRate(breath_rate)) {
+    radarData.breath_rate = breath_rate;
+    Serial.printf("Taxa de Respiração: %.2f bpm\n", breath_rate);
+  } else {
+    Serial.println("❌ Erro ao obter taxa de respiração");
+  }
+
+  // 3. Medir taxa cardíaca
+  float heart_rate;
+  if (mmWave.getHeartRate(heart_rate)) {
+    radarData.heart_rate = heart_rate;
+    Serial.printf("Taxa Cardíaca: %.2f bpm\n", heart_rate);
+  } else {
+    Serial.println("❌ Erro ao obter taxa cardíaca");
+  }
+
+  // 4. Medir distância
+  float distance;
+  if (mmWave.getDistance(distance)) {
+    radarData.distance = distance;
+    Serial.printf("Distância: %.2f cm\n", distance);
+  } else {
+    Serial.println("❌ Erro ao obter distância");
+  }
+  
+  // Marcar que sinais vitais estão disponíveis
+  radarData.vital_signs_available = true;
+  Serial.println("✅ Sinais vitais medidos com sucesso!");
+}
 
 // Callback quando dados são enviados (ajustado para ESP32-C6)
 void OnDataSent(const wifi_tx_info_t *info, esp_now_send_status_t status) {
@@ -171,6 +236,7 @@ void setup() {
   Serial.printf("Deep Sleep ativo: %s\n", DEEP_SLEEP_ENABLED ? "SIM" : "NÃO");
   Serial.printf("Ciclo de trabalho: %d min ativo, %d min dormindo\n", WORK_TIME_MINUTES, SLEEP_TIME_MINUTES);
   Serial.printf("Timeout sem movimento: %d ms\n", MOTION_TIMEOUT_MS);
+  Serial.println("Sinais vitais: Ativados quando pessoa está a ≤ 1.5m");
   
   // Mostrar MAC address desta ESP
   Serial.printf("MAC Address desta ESP: %02X:%02X:%02X:%02X:%02X:%02X\n",
@@ -194,6 +260,19 @@ void loop() {
     if (mmWave.isHumanDetected()) {
       Serial.printf("-----Human Detected-----\n");
       radarData.human_detected = true;
+      
+      // Verificar se pessoa está próxima (máximo 1.5 metros = 150 cm)
+      float distance;
+      if (mmWave.getDistance(distance)) {
+        Serial.printf("Distância detectada: %.2f cm\n", distance);
+        if (distance <= 150.0) {
+          Serial.println("🚨 Pessoa próxima detectada! Medindo sinais vitais...");
+          measureVitalSigns();
+        } else {
+          Serial.println("Pessoa detectada mas muito distante para sinais vitais");
+          radarData.vital_signs_available = false;
+        }
+      }
     }
 
     PeopleCounting target_info;
